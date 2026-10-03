@@ -1,0 +1,234 @@
+\section{Описание}
+
+\subsection{Источники данных}
+Для построения корпуса использовались два источника данных.
+
+\textbf{Подкорпус текстов песен.} Список популярных треков получается из
+\MYhref{https://www.last.fm/api}{Last.fm API} (метод \texttt{chart.gettoptracks}),
+а текст песни для каждого трека --- из бесплатного
+\MYhref{https://api.lyrics.ovh}{Lyrics.ovh API} (запрос вида
+\texttt{/v1/\{артист\}/\{название\}}). Last.fm используется с бесплатным ключом
+API, Lyrics.ovh ключа не требует.
+
+\textbf{Подкорпус информации о записях.} Список популярных артистов получается
+из Last.fm API (метод \texttt{chart.gettopartists}), затем для каждого артиста из
+\MYhref{https://musicbrainz.org/doc/MusicBrainz_API}{MusicBrainz API} загружается
+список записей (поиск \texttt{/ws/2/recording}) и подробная информация о каждой
+записи: длительность, жанры, идентификатор MBID.
+
+\subsection{Характеристики корпуса}
+Корпус состоит из двух подкорпусов. Каждый документ --- HTML-страница,
+сгенерированная программой, плюс отдельный JSON-файл с метаданными.
+
+В подкорпусе текстов песен документ содержит название трека, исполнителя и текст
+песни (блок \texttt{div.lyrics}). Метаданные: артист, название, длина текста,
+число слов, время загрузки, источник данных.
+
+В подкорпусе записей MusicBrainz документ содержит название записи, исполнителя,
+длительность, жанры и MBID. Метаданные: MBID, артист, название, время загрузки.
+
+Разметка документов --- HTML, метаданные хранятся в формате JSON.
+
+\subsection{Разбиение на документы}
+Корпус разбит на документы по принципу \enquote{один объект --- один документ}:
+каждый трек сохраняется в файл \texttt{track\_\{N\}.html} с метаданными
+\texttt{track\_\{N\}\_full.json}, каждая запись MusicBrainz --- в файл
+\texttt{recording\_\{mbid\}.html} с метаданными \texttt{recording\_\{N\}.json}.
+Такое разбиение позволяет обрабатывать документы независимо друг от друга.
+
+\subsection{Выделение текста}
+Сырые данные --- HTML-страницы. Текст выделяется из размеченных блоков: для
+текстов песен --- содержимое блока \texttt{div.lyrics}, для записей --- текстовое
+содержимое информационных блоков (название, исполнитель, длительность, жанры).
+HTML-теги, CSS-оформление и служебные элементы (стили, футер, статистика)
+отбрасываются.
+
+\subsection{Существующие поисковики}
+Для поиска по выбранному набору документов уже можно использовать:
+
+\begin{itemize}
+    \item \textbf{Google с ограничением по сайтам} --- для поиска текстов песен:
+    тексты тех же песен доступны на публичных сайтах (genius.com, azlyrics.com),
+    поэтому запросы вида \texttt{site:genius.com \{артист\} \{название\}} находят
+    те же документы, что и в корпусе;
+    \item \textbf{встроенный поиск MusicBrainz}
+    (\MYhref{https://search.musicbrainz.org}{search.musicbrainz.org}) --- для
+    поиска записей по артисту и названию.
+\end{itemize}
+
+\subsection{Примеры запросов и недостатки выдачи}
+
+\begin{enumerate}
+    \item Google: \texttt{Olivia Rodrigo "stupid song" site:genius.com} --- текст
+    находится, но его версия может отличаться от скачанной с Lyrics.ovh (другая
+    пунктуация и форматирование).
+    \item Google: \texttt{Taylor Swift "Patient Zero" текст песни} --- в выдаче
+    много дублей одного и того же текста на разных сайтах, страницы с рекламой и
+    новости, а не только сам текст.
+    \item Поиск MusicBrainz: \texttt{artist:"Radiohead" recording:"Just"} ---
+    нужная запись находится, но вместе с ней десятки похожих (ремастеры,
+    live-версии, сборники), из которых сложно выбрать нужную.
+\end{enumerate}
+
+Общие недостатки: поисковики не ограничены нашим корпусом (выдают документы,
+которых в нём нет), а поиск MusicBrainz работает только по метаданным, а не по
+содержимому документа.
+
+\subsection{Статистика по корпусу}
+Статистика приведена для целевого размера корпуса --- 30000 документов (по 15000
+в каждом подкорпусе); значения экстраполированы по фактически скачанным
+документам.
+
+\begin{tabular}{|l|c|c|c|}
+\hline
+Показатель & Тексты песен & Записи & Всего \\ \hline
+Размер \enquote{сырых} данных & $\sim$57 МБ & $\sim$41 МБ & $\sim$98 МБ \\ \hline
+Количество документов & 15000 & 15000 & 30000 \\ \hline
+Размер выделенного текста & $\sim$20 МБ & $\sim$6 МБ & $\sim$26 МБ \\ \hline
+Средний размер документа & $\sim$3{,}8 КБ & $\sim$2{,}7 КБ & $\sim$3{,}3 КБ \\ \hline
+Средний объём текста в документе & $\sim$1{,}3 КБ & $\sim$0{,}4 КБ & $\sim$0{,}9 КБ \\ \hline
+\end{tabular}
+
+\pagebreak
+
+\section{Исходный код}
+Программа \texttt{parser.py} написана на Python 3 и использует библиотеку
+\texttt{requests}. Она состоит из двух классов: \texttt{LyricsOvhParser}
+(подкорпус текстов песен) и \texttt{MusicBrainzParser} (подкорпус записей).
+
+Этапы работы \texttt{LyricsOvhParser}:
+\begin{enumerate}
+    \item получение страницы популярных треков из Last.fm API;
+    \item для каждого трека --- запрос текста из Lyrics.ovh;
+    \item сохранение HTML-документа и JSON-метаданных.
+\end{enumerate}
+
+Этапы работы \texttt{MusicBrainzParser}:
+\begin{enumerate}
+    \item получение страницы популярных артистов из Last.fm API;
+    \item поиск записей артиста в MusicBrainz (постранично, по 100 записей);
+    \item загрузка подробной информации о каждой записи;
+    \item сохранение HTML-документа и JSON-метаданных.
+\end{enumerate}
+
+При написании кода пришлось учесть особенности реальных API: временные сбои
+серверов (повторные попытки запроса), зависание отдельных запросов (таймауты),
+ограничение частоты запросов MusicBrainz (пауза 1{,}2~с между запросами) и
+отсутствие части текстов (около 15--20\% треков возвращают 404, такие треки
+пропускаются).
+
+Получение списка популярных треков из Last.fm (с повторными попытками при сбое):
+
+\begin{lstlisting}[language=Python]
+def get_popular_tracks(self, page=1, page_size=20):
+    api_key = "..."
+    url = "https://ws.audioscrobbler.com/2.0/"
+    params = {
+        "method": "chart.gettoptracks",
+        "api_key": api_key,
+        "format": "json",
+        "page": page,
+        "limit": page_size
+    }
+    for attempt in range(3):
+        try:
+            response = self.session.get(url, params=params, timeout=30)
+            if response.status_code == 200:
+                data = response.json()
+                tracks = data.get("tracks", {}).get("track", [])
+                track_list = []
+                for track in tracks:
+                    artist = track.get("artist", {}).get("name", "")
+                    title = track.get("name", "")
+                    if artist and title:
+                        track_list.append((artist, title))
+                return track_list
+        except Exception:
+            pass
+        time.sleep(2 * (attempt + 1))
+    return None
+\end{lstlisting}
+
+Запрос текста песни из Lyrics.ovh (таймаут и повтор при ошибке сервера):
+
+\begin{lstlisting}[language=Python]
+def get_lyrics(self, artist, title):
+    url = f"{self.base_url}/{quote_plus(artist)}/{quote_plus(title)}"
+    for attempt in range(2):
+        try:
+            response = self.session.get(url, timeout=30)
+            if response.status_code == 200:
+                lyrics = response.json().get("lyrics", "")
+                if lyrics and len(lyrics.strip()) > 50:
+                    return lyrics.strip()
+                return None
+            elif response.status_code == 404:
+                return None
+            elif response.status_code >= 500 and attempt == 0:
+                continue
+            return None
+        except Exception:
+            if attempt == 0:
+                continue
+            return None
+    return None
+\end{lstlisting}
+
+Основной цикл загрузки текстов (различаются ошибка API и конец списка,
+защита от вечной пагинации при отказе сервиса):
+
+\begin{lstlisting}[language=Python]
+while downloaded < max_tracks:
+    tracks = self.get_popular_tracks(page, page_size)
+    if tracks is None:            # API error -> retry the page
+        page_errors += 1
+        if page_errors >= 3:
+            break
+        continue
+    if not tracks:                # track list is exhausted
+        break
+    for artist, title in tracks:
+        lyrics = self.get_lyrics(artist, title)
+        if lyrics:
+            self.save_lyrics_html(artist, title, lyrics, downloaded + 1)
+            downloaded += 1
+        else:
+            consecutive_failures += 1
+            if consecutive_failures >= 50:
+                break
+    page += 1
+\end{lstlisting}
+
+Основной цикл загрузки записей MusicBrainz (топ-артисты Last.fm, постраничный
+поиск записей, пропуск повторов по MBID):
+
+\begin{lstlisting}[language=Python]
+while downloaded < max_recordings:
+    artists = self.get_top_artists(artist_page, 50)
+    if not artists:
+        break
+    for artist in artists:
+        offset = 0
+        while downloaded < max_recordings:
+            recordings = self.search_recordings_by_artist_api(
+                artist, limit=100, offset=offset)
+            if recordings is None:    # search failed -> skip artist
+                break
+            if not recordings:        # no more recordings
+                break
+            for recording in recordings:
+                if recording["id"] in processed_ids:
+                    continue
+                processed_ids.add(recording["id"])
+                data = self.get_recording_details(recording["id"])
+                if data:
+                    self.save_recording_html(data, recording["id"])
+                    downloaded += 1
+                time.sleep(1.2)       # MusicBrainz rate limit: 1 req/s
+            if len(recordings) < 100:
+                break
+            offset += 100
+    artist_page += 1
+\end{lstlisting}
+
+\pagebreak
