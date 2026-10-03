@@ -1,0 +1,40 @@
+db:
+  host: localhost
+  port: 27017
+  database: robot
+  collection: documents
+  
+logic:
+  delay_between_requests: 2.0  
+  max_documents_per_source: 15000  
+  refresh_interval_days: 7  
+  retry_attempts: 3  
+  timeout_seconds: 30  
+  
+sources:
+  lyrics_ovh:
+    enabled: true
+    base_url: "https://api.lyrics.ovh/v1"
+    html_dir: "../lab1/lyrics_corpus/html"  
+    metadata_dir: "../lab1/lyrics_corpus/metadata"  
+    source_name: "Lyrics.ovh"
+    
+  musicbrainz:
+    enabled: true
+    base_url: "https://musicbrainz.org/ws/2"
+    html_dir: "../lab1/musicbrainz_corpus/html"  
+    metadata_dir: "../lab1/musicbrainz_corpus/metadata"  
+    source_name: "MusicBrainz"
+    # /ws/2 — официальное публичное API, но robots.txt сайта содержит
+    # "Disallow: /ws", поэтому для этого источника отключаем проверку
+    respect_robots_txt: false
+    
+robots_txt:
+  respect_robots_txt: true
+  user_agent: "MusicCrawlerBot/1.0"
+  crawl_delay: 5
+  
+logging:
+  level: "INFO"
+  file: "robot.log"
+  max_size_mb: 10

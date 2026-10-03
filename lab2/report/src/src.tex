@@ -1,0 +1,210 @@
+\section{Описание}
+
+\subsection{Общее устройство}
+Поисковый робот --- программа \texttt{robot.py} на Python 3 (библиотеки
+\texttt{requests}, \texttt{pymongo}, \texttt{PyYAML}). Вся логика --- один класс
+\texttt{MusicCrawler}. Робот обкачивает те же два источника, что использовались
+при сборке корпуса в первой лабораторной работе: Lyrics.ovh API и MusicBrainz
+API. Хранилище --- MongoDB.
+
+Робот не бродит по ссылкам: список URL для обкачки строится из метаданных
+корпуса из первой лабораторной работы (файлы \texttt{*.json} в каталогах
+\texttt{metadata}). Для каждого трека из метаданных собирается URL вида
+\texttt{https://api.lyrics.ovh/v1/\{артист\}/\{название\}}, для каждой записи
+MusicBrainz --- \texttt{https://musicbrainz.org/ws/2/recording/\{mbid\}?fmt=json}.
+Таким образом, корпус из первой работы выступает seed-списком, а робот
+переобкачивает те же документы и следит за их изменениями.
+
+\subsection{Конфигурация}
+Единственный аргумент робота --- путь до YAML-конфига. В нём три обязательные
+секции: \texttt{db} (подключение к MongoDB), \texttt{logic} (задержка между
+обкачкой, лимит документов на источник, интервал переобкачки, таймауты, число
+повторных попыток) и \texttt{sources} (источники данных и пути к метаданным
+корпуса). Дополнительно --- секции \texttt{robots\_txt} и \texttt{logging}.
+
+\begin{lstlisting}[language=Python]
+db:
+  host: localhost
+  port: 27017
+  database: robot
+  collection: documents
+
+logic:
+  delay_between_requests: 2.0
+  max_documents_per_source: 15000
+  refresh_interval_days: 7
+  retry_attempts: 3
+  timeout_seconds: 30
+
+sources:
+  lyrics_ovh:
+    metadata_dir: "../lab1/lyrics_corpus/metadata"
+    source_name: "Lyrics.ovh"
+  musicbrainz:
+    metadata_dir: "../lab1/musicbrainz_corpus/metadata"
+    source_name: "MusicBrainz"
+    respect_robots_txt: false   # /ws/2 is the official public API
+\end{lstlisting}
+
+\subsection{Схема документа в MongoDB}
+Каждый обкачанный документ --- запись в коллекции \texttt{documents}:
+
+\begin{tabular}{|l|p{10cm}|}
+\hline
+Поле & Описание \\ \hline
+\texttt{url} & нормализованный URL (scheme + host + path, для MusicBrainz ---
+без query-параметров); уникальный индекс \\ \hline
+\texttt{html\_content} & \enquote{сырой} текст ответа (для API-источников ---
+тело JSON-ответа как есть) \\ \hline
+\texttt{source} & название источника (Lyrics.ovh / MusicBrainz) \\ \hline
+\texttt{crawl\_timestamp} & дата обкачки, Unix time stamp \\ \hline
+\texttt{content\_hash} & MD5-хэш содержимого, для проверки изменений \\ \hline
+\texttt{title}, \texttt{content\_length}, \ldots & заголовок документа и
+служебные поля (код ответа, Content-Type, Last-Modified) \\ \hline
+\texttt{previous\_versions} & история предыдущих версий изменившихся
+документов (хэш, дата, заголовок) \\ \hline
+\end{tabular}
+
+\subsection{Возобновление работы}
+После каждого успешно сохранённого документа робот записывает контрольную
+точку --- последний обработанный URL --- в отдельную коллекцию
+\texttt{crawler\_checkpoints}. При запуске точка загружается, список URL
+строится заново (детерминированно, из тех же метаданных), и робот продолжает
+со следующего после контрольной точки документа. Остановка --- по
+\texttt{Ctrl+C} (SIGINT/SIGTERM): робот завершает текущий документ, сохраняет
+статистику и выходит.
+
+\subsection{Переобкачка изменившихся документов}
+Документ переобкачивается, если с прошлой обкачки прошло больше
+\texttt{refresh\_interval\_days} дней. Скачанный контент сравнивается по
+MD5-хэшу с сохранённым: если не изменился --- обновляется только
+\texttt{crawl\_timestamp}; если изменился --- документ обновляется, а старая
+версия попадает в \texttt{previous\_versions}.
+
+\subsection{Особенности реализации}
+При написании кода пришлось учесть особенности источников:
+
+\begin{itemize}
+    \item оба источника --- JSON API, а не HTML-сайты: робот принимает ответы
+    с \texttt{Content-Type} \texttt{text/html} и \texttt{application/json},
+    \enquote{сырой} текст ответа сохраняется как есть;
+    \item robots.txt MusicBrainz содержит \texttt{Disallow: /ws}, под который
+    попадает официальное публичное API \texttt{/ws/2}; поэтому проверка
+    robots.txt отключается отдельно для этого источника (параметр
+    \texttt{respect\_robots\_txt}), для остальных источников она включена;
+    \item в метаданных корпуса есть дубли (одинаковые пары артист---название),
+    поэтому список URL дедуплицируется перед обкачкой;
+    \item сетевые сбои: повторные попытки запроса (3 раза, с backoff), таймаут
+    30~с, пауза 2~с между запросами, чтобы не долбить API.
+\end{itemize}
+
+\subsection{Статистика запуска}
+Статистика приведена для целевого размера корпуса --- 30000 документов (по
+15000 из каждого источника); значения экстраполированы по контрольному прогону
+(108 документов за 292~с, прерывание по \texttt{Ctrl+C}).
+
+\begin{tabular}{|l|c|}
+\hline
+Показатель & Значение \\ \hline
+Количество документов & 30000 \\ \hline
+Скорость обкачки & $\sim$0{,}37 док/с (задержка 2~с + время запроса) \\ \hline
+Время полной обкачки & $\sim$22--23 часа \\ \hline
+Средний размер сырого ответа & $\sim$1 КБ (тексты песен $\sim$1{,}5 КБ,
+записи $\sim$0{,}3 КБ) \\ \hline
+Объём сырых данных в БД & $\sim$30 МБ \\ \hline
+Ошибки обкачки & $\sim$0\% (в контрольном прогоне --- 0 из 108) \\ \hline
+Интервал переобкачки & 7 дней \\ \hline
+\end{tabular}
+
+Возобновление работы проверено: после остановки и повторного запуска робот
+загрузил контрольную точку и продолжил со следующего документа
+(\texttt{Продолжаем с позиции 2} в логе).
+
+\pagebreak
+
+\section{Исходный код}
+Программа \texttt{robot.py} состоит из класса \texttt{MusicCrawler}. Основные
+блоки: построение списка URL из метаданных, обкачка одного URL
+(\texttt{crawl\_url}), сохранение документа с проверкой изменений
+(\texttt{process\_document}), контрольные точки
+(\texttt{save\_checkpoint}/\texttt{load\_checkpoint}) и основной цикл
+(\texttt{run}).
+
+Обкачка одного URL: нормализация, проверка robots.txt, запрос с таймаутом,
+проверка Content-Type, вычисление хэша:
+
+\begin{lstlisting}[language=Python]
+def crawl_url(self, url, source_name, respect_robots_txt=True):
+    normalized_url = self.normalize_url(url, source_name)
+    if respect_robots_txt and not self.check_robots_txt(url, source_name):
+        return None
+    response = self.session.get(url, timeout=...)
+    response.raise_for_status()
+    content = response.text
+    content_type = response.headers.get('Content-Type', '')
+    if 'text/html' not in content_type and 'json' not in content_type:
+        return None
+    return {
+        'url': normalized_url,
+        'html_content': content,
+        'content_hash': self.calculate_content_hash(content),
+        'source': source_name,
+        'crawl_timestamp': int(time.time()),
+        ...
+    }
+\end{lstlisting}
+
+Сохранение документа: сравнение хэша с сохранённым, обновление только
+изменившихся, история предыдущих версий:
+
+\begin{lstlisting}[language=Python]
+def process_document(self, document):
+    existing = self.collection.find_one({'url': document['url']})
+    if existing:
+        if existing.get('content_hash') == document['content_hash']:
+            # unchanged: only refresh the crawl date
+            self.collection.update_one(
+                {'_id': existing['_id']},
+                {'$set': {'crawl_timestamp': document['crawl_timestamp']}})
+        else:
+            # changed: old version goes to history, document updated
+            document['previous_versions'] = existing.get(
+                'previous_versions', []) + [{
+                    'content_hash': existing.get('content_hash'),
+                    'crawl_timestamp': existing.get('crawl_timestamp')}]
+            self.collection.update_one(
+                {'_id': existing['_id']}, {'$set': document})
+    else:
+        self.collection.insert_one(document)
+\end{lstlisting}
+
+Контрольная точка --- последний обработанный URL (коллекция
+\texttt{crawler\_checkpoints}, одна запись на робота):
+
+\begin{lstlisting}[language=Python]
+def save_checkpoint(self, url):
+    self.db['crawler_checkpoints'].update_one(
+        {'crawler_id': 'music_crawler'},
+        {'$set': {'last_url': url, 'timestamp': time.time()}},
+        upsert=True)
+\end{lstlisting}
+
+Основной цикл: пропуск ещё свежих документов, обкачка, задержка между
+запросами:
+
+\begin{lstlisting}[language=Python]
+for i in range(start_index, len(all_urls)):
+    if not self.running:          # stop on Ctrl+C
+        break
+    url_info = all_urls[i]
+    existing = self.collection.find_one({'url': url_info['url']})
+    if existing and not self.should_recrawl(existing):
+        continue                  # too early to re-crawl
+    document = self.crawl_url(url_info['url'], ...)
+    if document:
+        self.process_document(document)
+        self.save_checkpoint(url_info['url'])
+    time.sleep(self.config['logic']['delay_between_requests'])
+\end{lstlisting}
+
+\pagebreak
