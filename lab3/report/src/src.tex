@@ -1,0 +1,282 @@
+\section{Описание}
+
+\subsection{Общее устройство}
+Токенизатор --- программа \texttt{lexer.cpp} на C++17 (компилятор Apple Clang
+21, флаги \texttt{-std=c++17 -O2 -Wall}), вся логика --- класс
+\texttt{MusicTokenizer}. Сборка и запуск --- через \texttt{Makefile}:
+\texttt{make run} прогоняет токенизатор по обоим корпусам из первой
+лабораторной работы (\texttt{lyrics\_corpus} и \texttt{musicbrainz\_corpus},
+HTML-документы), \texttt{make test} --- синтетический тест производительности.
+Программа рекурсивно обходит каталоги, отбирает файлы \texttt{.html},
+\texttt{.htm}, \texttt{.txt} и считает статистику: количество токенов, символов,
+среднюю длину токена, время и скорость токенизации.
+
+\subsection{Препроцессинг: извлечение текста из HTML}
+Перед разбиением на токены из документа извлекается текстовый контент
+(функция \texttt{extractTextFromHTML}):
+
+\begin{itemize}
+    \item вырезаются содержимое тегов \texttt{<script>}, \texttt{<style>} и
+    HTML-комментарии \texttt{<!-- -->} целиком;
+    \item сами теги удаляются; после закрывающего тега вставляется пробел,
+    чтобы слова из соседних элементов не склеивались (\texttt{<b>bold</b>text}
+    $\to$ \texttt{bold text});
+    \item HTML-сущности декодируются: \texttt{\&lt;} $\to$ \texttt{<},
+    \texttt{\&gt;} $\to$ \texttt{>}, \texttt{\&amp;} $\to$ \texttt{\&},
+    \texttt{\&quot;} $\to$ \texttt{"}, \texttt{\&\#39;} $\to$ \texttt{'};
+    \item переводы строк заменяются на пробелы.
+\end{itemize}
+
+\subsection{Правила токенизации}
+Разбиение на токены --- по разделителям, с последующей нормализацией и
+фильтрацией каждого токена.
+
+\textbf{Разделители.} ASCII-пробельные символы (пробел, табуляция, переводы
+строк) и все знаки ASCII-пунктуации от \texttt{!} до \texttt{\textasciitilde}
+(строка \texttt{delimiters} в коде). Кроме них --- юникодные разделители,
+определяемые по ведущим байтам UTF-8 последовательности (функция
+\texttt{separatorLength}):
+
+\begin{itemize}
+    \item \texttt{U+0080--U+00BF} (байты \texttt{C2 xx}): C1-управляющие
+    (мусор от неправильно декодированных CP1252-кавычек), неразрывный пробел
+    \texttt{U+00A0}, испанские \texttt{U+00A1}/\texttt{U+00BF}, кавычки
+    \texttt{«»}, знак ударения \texttt{U+00B4}, пилкроу \texttt{U+00B6};
+    \item \texttt{U+2000--U+207F} (байты \texttt{E2 80/81 xx}): юникодные
+    пробелы (в том числе \texttt{U+2005}, \texttt{U+205F}), тире \texttt{---}
+    \texttt{--}, типографские кавычки \texttt{‘’ “”}, многоточие, двойную
+    вертикаль \texttt{U+2016};
+    \item \texttt{U+2600--U+27BF} (байты \texttt{E2 98--9E xx}): музыкальные
+    символы \texttt{U+266A--U+266C} и прочие значки;
+    \item \texttt{U+3000--U+303F} (байты \texttt{E3 80 xx}): CJK-пунктуация;
+    \item эмодзи \texttt{U+1F000+} (байты \texttt{F0 9F xx xx}): в корпусе
+    MusicBrainz каждый документ начинается с \texttt{U+1F3A4} и содержит
+    \texttt{U+1F4CA}.
+\end{itemize}
+
+Буквы --- ASCII, кириллица (\texttt{D0/D1 xx}), акцентированная латиница
+(\texttt{C3 xx}), корейский, японский --- остаются внутри токенов.
+
+\textbf{Нижний регистр.} ASCII --- тривиально; кириллица --- вручную по байтам
+UTF-8: \texttt{D0 90--AF} (А--Я) $\to$ \texttt{+0x20}, \texttt{Ё} (U+0401)
+$\to$ \texttt{ё} (U+0451); блок \texttt{D1 80--9F} (р--я и расширенная
+кириллица) уже строчные.
+
+\textbf{Защита аббревиатур.} Перед разбиением вхождения музыкальных
+аббревиатур (\texttt{feat.}, \texttt{ft.}, \texttt{vs.}, \texttt{remix},
+\texttt{ep}, \texttt{lp}, \texttt{bpm}, \ldots), обрамлённые пробелами,
+помечаются суффиксом \texttt{\_PROTECTED}, который вырезается из готового
+токена.
+
+\textbf{Очистка токена} (\texttt{cleanToken}): обрезка краевых пробелов;
+декодирование сущностей; отбрасывание токенов из одних цифр длиннее 4 символов
+(годы и счётчики оставляем, ID и таймстампы --- нет); отбрасывание
+односимвольных токенов, кроме местоимений \texttt{i}, \texttt{a}, \texttt{я}.
+
+\textbf{Стоп-слова и мусор} (\texttt{shouldSkipToken}, включается для корпуса
+lyrics): английские и русские стоп-слова (\texttt{the}, \texttt{and},
+\texttt{это}, \texttt{и}, \ldots); URL (\texttt{http://}, \texttt{www.}),
+email и домены (\texttt{.com}, \texttt{.ru}).
+
+\subsection{Достоинства и недостатки метода}
+\textbf{Достоинства:} правила просты и детерминированы; разбиение по
+разделителям не требует словарей и работает для любого языка; нормализация
+регистра и фильтры (цифры, URL, стоп-слова) сразу снижают шум индекса;
+обработка юникода на уровне байтов UTF-8 не требует внешних библиотек.
+
+\textbf{Недостатки:} список разделителей неполон и расширялся по факту
+(обнаружено на корпусе); апостроф и дефис --- разделители, поэтому
+\texttt{couldn’t} и \texttt{b-side} режутся; фильтры эвристичны (число до 4
+цифр --- \enquote{хорошее}, ID из букв и цифр --- нет); защита аббревиатур
+фактически не работает: точки и дефисы внутри \texttt{feat.} и \texttt{b-side}
+всё равно режут токен; средняя длина считается по всему тексту, включая
+пробелы между токенами.
+
+\subsection{Примеры неудачных токенов}
+Примеры из реального прогона по корпусам и способы исправления правил:
+
+\begin{tabular}{|p{4.6cm}|p{4.4cm}|p{5.6cm}|}
+\hline
+Токен(ы) & Проблема & Как поправить правила \\ \hline
+\texttt{000ee19e}, \texttt{f1db}, \texttt{4e22}, \texttt{b8a4} &
+MBID (UUID) из MusicBrainz разрезан дефисами на 5 кусков &
+распознавать шаблон UUID (8-4-4-4-12 hex) и не токенизировать его
+или отбрасывать целиком \\ \hline
+\texttt{couldn} (из \texttt{couldn’t}) & апостроф --- разделитель,
+\texttt{t} отброшен как односимвольный & не считать апостроф
+разделителем внутри слова (между буквами): \texttt{couldn’t} ---
+один токен \\ \hline
+\texttt{side} (из \texttt{b-side}) & \texttt{b} отброшен (1 символ) &
+аналогично: дефис между буквами --- часть слова \\ \hline
+\texttt{the antidote this time} одним токеном (до исправления) &
+в текстах песен встречается юникодный пробел \texttt{U+205F}, который не
+был разделителем --- слова склеивались в один токен & добавить юникодные
+пробелы \texttt{U+2000--U+205F} в разделители (сделано) \\ \hline
+\texttt{U+1F3A4}, \texttt{U+1F4CA} (30000 шт.) & эмодзи из шаблона страниц
+MusicBrainz попадали в токены & считать эмодзи разделителями (сделано) \\ \hline
+\texttt{2026}, \texttt{10}, \texttt{03}, \texttt{16}, \texttt{31} &
+дата обкачки из подвала страницы режется на шумовые токены &
+вырезать служебные блоки шаблона (footer) при извлечении текста \\ \hline
+\end{tabular}
+
+\subsection{Статистика запуска}
+Статистика приведена для корпуса из 30000 документов (по 15000 из каждого
+источника: Lyrics.ovh и MusicBrainz; 260 МБ сырого HTML):
+
+\begin{tabular}{|l|c|}
+\hline
+Показатель & Значение \\ \hline
+Обработано файлов & 30000 \\ \hline
+Извлечено текста из HTML & 41{,}9 МБ \\ \hline
+Количество токенов & 5 503 500 \\ \hline
+Токенов на документ & 183 \\ \hline
+Средняя длина токена & 7{,}61 символа \\ \hline
+Время токенизации & 3{,}4 с \\ \hline
+Общее время (с чтением файлов) & 7{,}6 с \\ \hline
+Скорость токенизации & 11{,}7 МБ/с \\ \hline
+\end{tabular}
+
+\subsection{Время и скорость}
+Зависимость времени от объёма входных данных (синтетический тест
+\texttt{--test}, текст наращивается повторением одного фрагмента):
+
+\begin{tabular}{|c|c|c|c|}
+\hline
+Размер текста & Время & Скорость & Токенов/с \\ \hline
+34 КБ & 0{,}0016 с & 20{,}5 МБ/с & 2{,}19 млн \\ \hline
+172 КБ & 0{,}0074 с & 22{,}7 МБ/с & 2{,}44 млн \\ \hline
+688 КБ & 0{,}037 с & 18{,}3 МБ/с & 1{,}96 млн \\ \hline
+3438 КБ & 0{,}454 с & 7{,}4 МБ/с & 0{,}79 млн \\ \hline
+\end{tabular}
+
+До $\sim$700 КБ время растёт практически линейно (скорость стабильна
+18--23 МБ/с). На мегабайтных текстах скорость падает: перед разбиением
+текст 17 раз сканируется find/replace-проходами защиты аббревиатур, каждый
+\texttt{replace} переносит хвост строки --- вклад растёт с длиной.
+
+Скорость нельзя считать оптимальной. Основные резервы ускорения:
+
+\begin{itemize}
+    \item заменить 17 проходов \texttt{find/replace} по всему тексту одним
+    проходом с проверкой аббревиатур на лету (или убрать механизм --- он
+    инертен);
+    \item не копировать строки: сейчас текст копируется в
+    \texttt{cleanText}, \texttt{processedText}, \texttt{currentToken}
+    посимвольно; токены можно нарезать указателями (string\_view) на исходный
+    буфер;
+    \item классификацию байтов (разделитель/буква) --- таблицей из 256
+    значений вместо \texttt{delimiters.find(c)};
+    \item многопоточность: файлы независимы, обработка легко делится на
+    потоки (OpenMP) практически без синхронизации.
+\end{itemize}
+
+По порядку величины это дало бы десятки МБ/с на одном ядре и сотни МБ/с на
+многопоточной версии --- с запасом быстрее текущих 11{,}7 МБ/с.
+
+\pagebreak
+
+\section{Исходный код}
+Программа \texttt{lexer.cpp} состоит из класса \texttt{MusicTokenizer}.
+Основные блоки: извлечение текста из HTML, определение длины
+юникодного разделителя, основной цикл токенизации, приведение кириллицы к
+нижнему регистру, очистка и фильтрация токенов, сбор статистики.
+
+Юникодные разделители --- по ведущим байтам UTF-8 последовательности
+(многобайтовые символы нельзя сравнивать с \texttt{char}-литералами):
+
+\begin{lstlisting}[language=C++]
+size_t separatorLength(const std::string& text, size_t pos) const {
+    unsigned char c = static_cast<unsigned char>(text[pos]);
+    if (c == 0xC2 && pos + 1 < text.length())
+        return 2;              // U+0080-U+00BF: C1 junk, nbsp, punct
+    if (c == 0xE2 && pos + 2 < text.length()) {
+        unsigned char c2 = static_cast<unsigned char>(text[pos + 1]);
+        // U+2000-U+207F: spaces, dashes, quotes; U+2600-U+27BF: symbols
+        if (c2 == 0x80 || c2 == 0x81 || (c2 >= 0x98 && c2 <= 0x9E))
+            return 3;
+        return 0;
+    }
+    if (c == 0xF0 && pos + 3 < text.length()) {
+        // U+1F000+: emoji
+        if (static_cast<unsigned char>(text[pos + 1]) == 0x9F)
+            return 4;
+    }
+    return 0;
+}
+\end{lstlisting}
+
+Извлечение текста из HTML: вырезание \texttt{<script>/<style>/комментариев}
+по закрывающим последовательностям, пробел после закрывающего тега:
+
+\begin{lstlisting}[language=C++]
+if (c == '>') {
+    if (inComment) {
+        if (i >= 2 && html.substr(i - 2, 2) == "--")
+            inComment = false, inTag = false;
+        continue;
+    }
+    if (inScript) {
+        if (i >= 8 && html.substr(i - 8, 8) == "</script")
+            inScript = false, inTag = false;
+        continue;
+    }
+    if (inStyle) {
+        if (i >= 7 && html.substr(i - 7, 7) == "</style")
+            inStyle = false, inTag = false;
+        continue;
+    }
+    if (inTag) {
+        inTag = false;
+        if (closingTag)          // </div> etc -> word boundary
+            shouldAddSpace = true, closingTag = false;
+        continue;
+    }
+}
+\end{lstlisting}
+
+Основной цикл токенизации: накопление символов до разделителя, пропуск
+байтов юникодного разделителя, нормализация и фильтрация:
+
+\begin{lstlisting}[language=C++]
+for (size_t i = 0; i < processedText.length(); i++) {
+    char c = processedText[i];
+    if (c == '_' && processedText.compare(i, 10, "_PROTECTED") == 0) {
+        i += 9;                  // skip abbreviation protection marker
+        continue;
+    }
+    size_t sepLen = separatorLength(processedText, i);
+    if (isDelimiter(c) || sepLen > 0) {
+        if (!currentToken.empty()) {
+            std::string processed = toLowerWithCyrillic(currentToken);
+            processed = cleanToken(processed);
+            if (!processed.empty() &&
+                (!removeStopWords || !shouldSkipToken(processed)))
+                tokens.push_back(processed);
+            currentToken.clear();
+        }
+        if (sepLen > 0) i += sepLen - 1;   // skip separator bytes
+    } else {
+        currentToken += c;
+    }
+}
+\end{lstlisting}
+
+Приведение кириллицы к нижнему регистру по байтам UTF-8
+(\texttt{D0 90--AF} --- А--Я, \texttt{D0 81} --- Ё):
+
+\begin{lstlisting}[language=C++]
+if (isCyrillic(c) && i + 1 < str.length()) {
+    unsigned char c2 = static_cast<unsigned char>(str[i + 1]);
+    if (c == 0xD0 && c2 == 0x81) {        // U+0401 Yo -> U+0451 yo
+        result.push_back(0xD1); result.push_back(0x91); i++;
+    } else if (c == 0xD0 && c2 >= 0x90 && c2 <= 0xAF) {
+        result.push_back(c); result.push_back(c2 + 0x20); i++;
+    } else {                              // D1 xx: already lowercase
+        result.push_back(c); result.push_back(c2); i++;
+    }
+} else if (c >= 'A' && c <= 'Z') {
+    result.push_back(c + 32);
+}
+\end{lstlisting}
+
+\pagebreak
