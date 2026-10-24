@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.10.3)  3 OCT 2026 17:25
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.10.3)  5 NOV 2026 20:03
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -774,16 +774,16 @@ Overfull \hbox (44.59302pt too wide) in paragraph at lines 78--83
  []
 
 [3] [4]
-Overfull \hbox (89.13142pt too wide) in paragraph at lines 126--132
+Overfull \hbox (89.13142pt too wide) in paragraph at lines 125--131
 \T2B/cmr/m/n/12 с про-вер-кой из-ме-не-ний (\T2B/cmtt/m/n/12 process_document\T
 2B/cmr/m/n/12 ), кон-троль-ные точ-ки (\T2B/cmtt/m/n/12 save_checkpoint\T2B/cmr
 /m/n/12 /\T2B/cmtt/m/n/12 load_checkpoint\T2B/cmr/m/n/12 )
  []
 
 LaTeX Font Info:    Font shape `T2B/cmtt/bx/n' in size <10> not available
-(Font)              Font shape `T2B/cmtt/m/n' tried instead on input line 137.
+(Font)              Font shape `T2B/cmtt/m/n' tried instead on input line 136.
 [5]
-Overfull \hbox (10.86311pt too wide) in paragraph at lines 181--183
+Overfull \hbox (10.86311pt too wide) in paragraph at lines 180--182
 []\T2B/cmr/m/n/12 Контрольная точ-ка --- по-след-ний об-ра-бо-тан-ный URL (кол-
 лек-ция \T2B/cmtt/m/n/12 crawler_checkpoints\T2B/cmr/m/n/12 ,
  []
@@ -821,7 +821,7 @@ c/cm-super/sfrm1200.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/pu
 blic/cm-super/sfti1200.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1
 /public/cm-super/sftt1000.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/ty
 pe1/public/cm-super/sftt1200.pfb>
-Output written on report.pdf (9 pages, 249870 bytes).
+Output written on report.pdf (9 pages, 249758 bytes).
 PDF statistics:
  265 PDF objects out of 1000 (max. 8388607)
  230 compressed objects within 3 object streams

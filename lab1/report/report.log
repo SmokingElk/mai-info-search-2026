@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.10.3)  3 OCT 2026 14:10
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.10.3)  5 NOV 2026 19:56
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -761,7 +761,7 @@ n\T2B/cmr/m/n/12 .
  []
 
 [2] [3]
-Overfull \hbox (26.523pt too wide) in paragraph at lines 95--98
+Overfull \hbox (26.523pt too wide) in paragraph at lines 94--97
 \T2B/cmr/m/n/12 со-сто-ит из двух клас-сов: \T2B/cmtt/m/n/12 LyricsOvhParser \T
 2B/cmr/m/n/12 (под-кор-пус тек-стов пе-сен) и \T2B/cmtt/m/n/12 MusicBrainzParse
 r
@@ -771,7 +771,7 @@ r
 File: lstlang1.sty 2025/11/14 1.11b listings language file
 )
 LaTeX Font Info:    Font shape `T2B/cmtt/bx/n' in size <10> not available
-(Font)              Font shape `T2B/cmtt/m/n' tried instead on input line 123.
+(Font)              Font shape `T2B/cmtt/m/n' tried instead on input line 122.
 
 [4] [5]) [6] (./src/thinks.tex) [7] (./src/literature.tex
 Overfull \hbox (1.3247pt too wide) in paragraph at lines 12--13
@@ -806,7 +806,7 @@ c/cm-super/sfrm1200.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/pu
 blic/cm-super/sfti1200.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1
 /public/cm-super/sftt1000.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/ty
 pe1/public/cm-super/sftt1200.pfb>
-Output written on report.pdf (9 pages, 251410 bytes).
+Output written on report.pdf (9 pages, 251351 bytes).
 PDF statistics:
  295 PDF objects out of 1000 (max. 8388607)
  260 compressed objects within 3 object streams
