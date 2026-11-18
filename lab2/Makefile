@@ -45,6 +45,10 @@ mongo-down-brew:
 mongo-shell-brew:
 	mongosh
 
+mongo-show:
+	mongosh robot --quiet --eval 'db.documents.countDocuments({})'
+	mongosh robot --quiet --eval 'db.documents.find({}, {url: 1, source: 1, title: 1, crawl_timestamp: 1, content_length: 1}).limit(3).pretty()'
+
 ## Установить зависимости Python
 install:
 	$(PYTHON) -m pip install --user pyyaml pymongo requests

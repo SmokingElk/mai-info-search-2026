@@ -3,3 +3,4 @@ lab1/musicbrainz_corpus/
 robot.log
 lexer
 *.csv
+build/

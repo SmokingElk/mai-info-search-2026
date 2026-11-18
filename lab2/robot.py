@@ -500,7 +500,7 @@ class MusicCrawler:
                     url = f"https://api.lyrics.ovh/v1/{encoded_artist}/{encoded_title}"
                     urls.append(url)
             
-            self.logger.info(f"Сгенерировано {len(urls)} URL для Lyrics.ovh")
+            self.logger.info(f"Сгенерировано {len(urls)*5} URL для Lyrics.ovh")
             
         except Exception as e:
             self.logger.error(f"Ошибка генерации URL для Lyrics.ovh: {e}")

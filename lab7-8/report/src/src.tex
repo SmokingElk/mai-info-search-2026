@@ -1,0 +1,95 @@
+\section{Описание реализации}
+
+\subsection{Общее устройство}
+Программа реализована на C++17 без внешних зависимостей. Основные модули:
+\begin{itemize}
+    \item \texttt{document\_parser} --- обход каталога с HTML-файлами, извлечение заголовка и чистого текста (удаление тегов, скриптов, стилей, комментариев);
+    \item \texttt{tokenizer} --- очистка строки от не-алфавитных символов, приведение к нижнему регистру, удаление стоп-слов, разбиение на токены; поддержка кириллицы через проверку байтов UTF-8;
+    \item \texttt{boolean\_index} --- структура \texttt{BooleanIndex} (массив \texttt{IndexEntry}), где каждый \texttt{IndexEntry} хранит термин, массив идентификаторов документов и массив позиционных списков; функции добавления в индекс, поиска терма, операций AND/OR/NOT, фразового поиска, сохранения/загрузки индекса в бинарный файл;
+    \item \texttt{utils} --- вспомогательные функции (строковые операции, копирование строк, подсчёт слов).
+\end{itemize}
+
+CLI предоставляет четыре команды:
+\begin{itemize}
+    \item \texttt{build <html\_dir> <index\_file>} --- построить индекс и сохранить его;
+    \item \texttt{search <index\_file> <query>} --- загрузить индекс и выполнить запрос;
+    \item \texttt{demo} --- демонстрационный запуск на трёх встроенных HTML-документах;
+    \item \texttt{stats} --- показать статистику парсинга тестового HTML.
+\end{itemize}
+
+Сборка и запуск автоматизированы Makefile'ом: цель \texttt{index} строит индекс
+по корпусу (по умолчанию \texttt{../lab1/lyrics\_corpus/html}, путь можно
+переопределить переменной \texttt{CORPUS\_DIR}), цель \texttt{search}
+выполняет запрос: \texttt{make search QUERY="love AND night"}.
+
+\subsection{Структура индекса}
+\begin{lstlisting}[language=C++]
+struct PositionList {
+    int *positions;      // term positions within a document
+    int  count;          // number of positions
+    int  capacity;       // array capacity
+};
+
+struct IndexEntry {
+    char *term;              // the term itself
+    int  *doc_ids;           // ids of documents containing the term
+                             // (sorted in ascending order)
+    PositionList *positions; // one PositionList per document
+    int   doc_count;         // number of documents
+    int   capacity;          // array capacity
+};
+
+struct BooleanIndex {
+    IndexEntry *entries;  // array of index entries
+    int         count;    // number of unique terms
+    int         capacity; // capacity of the entries array
+};
+\end{lstlisting}
+
+\subsection{Поисковые операции}
+\begin{itemize}
+    \item \textbf{AND} --- пересечение отсортированных массивов идентификаторов документов (функция \texttt{intersect\_sorted\_arrays});
+    \item \textbf{OR} --- объединение (\texttt{union\_sorted\_arrays});
+    \item \textbf{NOT} --- дополнение относительно полного набора документов корпуса (\texttt{boolean\_not});
+    \item \textbf{Фразовый поиск} --- проверка, что последовательные термы фразы находятся в соседних позициях документа (\texttt{phrase\_search}).
+\end{itemize}
+
+В командной строке запрос разбивается токенизатором, операторы
+\texttt{and}, \texttt{or}, \texttt{not} отбрасываются, после чего выполняется
+последовательное пересечение списков документов всех оставшихся термов.
+
+\subsection{Сохранение и загрузка индекса}
+Индекс сериализуется в бинарный файл функциями \texttt{save\_index} и
+\texttt{load\_index}: последовательно записываются количество терминов, затем
+для каждого терма --- строка, число документов и пары
+\texttt{<doc\_id, позиции>}. При загрузке индекс не перестраивается, что
+позволяет выполнять повторные запросы без индексации корпуса.
+
+\subsection{Статистика и результаты}
+Для корпуса \texttt{lyrics\_corpus} (15000 HTML-документов) получено:
+\begin{itemize}
+    \item уникальных терминов --- $\sim$80~000;
+    \item размер бинарного индекса --- $\sim$36~МБ;
+    \item время построения --- $\sim$35~с.
+\end{itemize}
+Для корпуса \texttt{musicbrainz\_corpus} (также 15000 документов):
+\begin{itemize}
+    \item уникальных терминов --- $\sim$11~000;
+    \item размер индекса --- $\sim$5.5~МБ.
+\end{itemize}
+Примеры запросов (индекс \texttt{lyrics\_corpus}):
+\begin{verbatim}
+$ ./boolean_search search build/index.bin "love"
+Found term: 'love'
+Documents containing this term: 6410
+$ ./boolean_search search build/index.bin "love AND night"
+Boolean AND search for all terms:
+Found 1625 documents with all terms
+Document IDs: 6 14 27 40 43 ...
+\end{verbatim}
+
+\subsection{Особенности реализации}
+\begin{itemize}
+    \item корректная работа с кириллическими символами --- проверка байтов UTF-8 (0xD0/0xD1 + диапазоны вторых байтов) в функции \texttt{is\_alpha};
+    \item многотерминный \textbf{AND} реализован через последовательные пересечения отсортированных списков.
+\end{itemize}
